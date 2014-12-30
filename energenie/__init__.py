@@ -15,7 +15,7 @@ import time
 
 
 
-__version__ = "0.1"
+__version__ = "0.11"
 
 
 
@@ -104,8 +104,8 @@ def set_code(code):
 
 
 
-def signal_code(code):
-    """Set the specified code and signal the modulator.
+def send_code(code):
+    """Set the specified code and send it by signalling the modulator.
 
     This function calls set_code() to set the supplied code and then
     switches on the modulator to send the code to the sockets.
