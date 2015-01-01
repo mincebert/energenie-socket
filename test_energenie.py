@@ -52,8 +52,3 @@ try:
 except KeyboardInterrupt:
     # catch the interrupt signal and ignore it
     pass
-
-
-# clean up the GPIOs
-
-cleanup()

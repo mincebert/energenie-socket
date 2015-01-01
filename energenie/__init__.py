@@ -9,13 +9,11 @@ used to signal up to four radio controlled power sockets.
 
 
 
-import RPi.GPIO as GPIO
-
 import time
 
 
 
-__version__ = "0.11"
+__version__ = "0.2"
 
 
 
@@ -24,22 +22,32 @@ __version__ = "0.11"
 
 
 
-# GPIO pin numbers for the 4 data bits used to send the socket control codes
+# GPIO pin numbers for the 4 data bits, mode selection (OOK/FSK) and to enable
+# and disable the modulator
+#
+# these pin numbers are Broadcom pin numbers and not the Raspberry Pi pin
+# header numbers
 
-D0_PIN = 11
-D1_PIN = 15
-D2_PIN = 16
-D3_PIN = 13
+_D0_PIN = 17
+_D1_PIN = 22
+_D2_PIN = 23
+_D3_PIN = 27
+
+_MODESEL_PIN = 24
+
+_MODULATOR_PIN = 25
 
 
-# GPIO mode selection pin to choose signalling method
+# the two options for the mode selection pin - OOK (On-Off Keying) and FSK
+# (Frequency Shift Keying); the board actually only uses OOK, so FSK is
+# provided just for completeness
 
-MODESEL_PIN = 18
+_MODESEL_OOK = "0"
+_MODESEL_FSK = "1"
 
 
-# GPIO signalling pin used to turn the transmitting modulator on and off
-
-SIGNAL_PIN = 22
+_MODULATOR_OFF = "0"
+_MODULATOR_ON = "1"
 
 
 # codes to send to switch the various sockets off and on, in the form of a
@@ -61,22 +69,32 @@ SOCK3_ON = 0b1101
 SOCK4_ON = 0b1100
 
 
-# the two options for the mode selection pin - OOK (On-Off Keying) and FSK
-# (Frequency Shift Keying); the board actually only uses OOK, so FSK is
-# provided just for completeness
-
-MODESEL_OOK = False
-MODESEL_FSK = True
-
-
 # delay to wait for the encoder to settle, after setting the data bits 
 
-SETTLE_DELAY = 0.1
+_SETTLE_DELAY = 0.1
 
 
 # time to enable the modulator for to allow the code to be sent
 
-SIGNAL_DELAY = 0.25
+_MODULATOR_DURATION = 0.25
+
+
+# directory in sysfs for the GPIO
+
+_GPIO_DIR = "/sys/class/gpio/"
+
+
+# options for setting GPIO pin direction using _GPIOPin.set_direction()
+
+_GPIO_DIRECTION_OUT = "out"
+_GPIO_DIRECTION_IN = "in"
+
+
+# used by GPIOPin._wait_available() to determine the interval between checks
+# and maximum waiting time for an exported GPIO pin to become available
+
+_GPIO_PERMISSION_INTERVAL = 0.02
+_GPIO_PERMISSION_TIMEOUT = 0.8
 
 
 
@@ -84,70 +102,132 @@ SIGNAL_DELAY = 0.25
 
 
 
-def set_code(code):
-    """Sets a code in the encoder, ready to be sent.
+class _GPIOPin:
+    """Class to model a single GPIO pin.
 
-    The supplied code is a 4-bit value with D0 as the least significant
-    bit: '<D3><D2><D1><D0>'.
+    Methods should be use from within a 'with' block to open and close the
+    resource (export and unexport using the sysfs interface).
     """
 
 
-    # set each of the pins according to the status of the bits in the supplied
-    # code
-    GPIO.output(D0_PIN, code & 0b0001)
-    GPIO.output(D1_PIN, code & 0b0010)
-    GPIO.output(D2_PIN, code & 0b0100)
-    GPIO.output(D3_PIN, code & 0b1000)
+    def __init__(self, num):
+        # the constructor just stores the pin number and path for directory
+        # in sysfs for that pin
 
-    # wait for the encoder to settle
-    time.sleep(SETTLE_DELAY)
+        self._num = num
+        self._dir = _GPIO_DIR + "gpio%d/" % self._num
 
+
+        # initialise the 'available' flag to false as we haven't checked
+        # that yet (see _wait_available())
+
+        self._available = False
+
+
+    def __enter__(self):
+        # through sysfs, export the pin to be controlled
+
+        with open(_GPIO_DIR + "export", "w") as f:
+            f.write(str(self._num))
+
+
+    def __exit__(self, type, value, traceback):
+        # we're finish with the pin so unexport it
+
+        with open(_GPIO_DIR + "unexport", "w") as f:
+            f.write(str(self._num))
+
+
+    def _wait_available(self):
+        # this method is called before doing any operation which requires
+        # access to the pin's sysfs files - it attempt to open the 'value'
+        # file for writing, retrying until it becomes available, aborting if
+        # this takes too lon
+        #
+        # the method remembers that the files have become available and will
+        # return immediately, if this has already happened
+
+        if self._available:
+            return
+
+
+        total_wait = 0
+
+        while True:
+            try:
+                with open(self._dir + "value", "w"):
+                    break
+
+            except IOError:
+                pass
+
+
+            time.sleep(_GPIO_PERMISSION_INTERVAL)
+
+            total_wait += _GPIO_PERMISSION_INTERVAL
+            if total_wait > _GPIO_PERMISSION_TIMEOUT:
+                raise IOError("timed out waiting for access to GPIO pin")
+
+
+        self._available = True
+
+
+    def set_direction(self, direction):
+        """Set the pin communication direction."""
+
+        self._wait_available()
+
+        with open(self._dir + "direction", "w") as f:
+            f.write(direction)
+
+
+    def set_value(self, value):
+        """Set the pin output value."""
+
+        self._wait_available()
+
+        with open(self._dir + "value", "w") as f:
+            f.write(str(value))
 
 
 def send_code(code):
-    """Set the specified code and send it by signalling the modulator.
+    """Send a code to set the socket states.
 
-    This function calls set_code() to set the supplied code and then
-    switches on the modulator to send the code to the sockets.
+    The supplied code is a 4-bit value with D0 as the least significant
+    bit: '<D3><D2><D1><D0>'.  It will typically be one of the SOCK<n>_-
+    {OFF|ON} or ALL_{OFF|ON} constants.
     """
 
 
-    set_code(code)
-
-    GPIO.output(SIGNAL_PIN, True)
-    time.sleep(SIGNAL_DELAY)
-    GPIO.output(SIGNAL_PIN, False)
-
-
-
-def cleanup():
-    """Clean up after using the module.
-
-    This function should be called when finished with the module to clean
-    up the GPIO module.
-    """
+    d0 = _GPIOPin(_D0_PIN)
+    d1 = _GPIOPin(_D1_PIN)
+    d2 = _GPIOPin(_D2_PIN)
+    d3 = _GPIOPin(_D3_PIN)
+    modesel = _GPIOPin(_MODESEL_PIN)
+    modulator = _GPIOPin(_MODULATOR_PIN)
 
 
-    GPIO.cleanup()
+    # the 'with' block opens and closes the pins
 
+    with d0, d1, d2, d3, modesel, modulator:
+        # all the pins we use are used for output
+        for pin in [d0, d1, d2, d3, modesel, modulator]:
+            pin.set_direction(_GPIO_DIRECTION_OUT)
 
+        # set the GPIO data pins according to the various bits in the supplied
+        # code
+        d0.set_value(1 if code & 0b0001 else 0)
+        d1.set_value(1 if code & 0b0010 else 0)
+        d2.set_value(1 if code & 0b0100 else 0)
+        d3.set_value(1 if code & 0b1000 else 0)
 
-# --- init ---
+        # use On-Off Keying (OOK)
+        modesel.set_value(_MODESEL_OOK)
 
+        # wait for the encoder to settle
+        time.sleep(_SETTLE_DELAY)
 
-
-# set the GPIO pin numbering mode
-GPIO.setmode(GPIO.BOARD)
-
-# set the pins we're going to use on the GPIO connector to output mode
-for _pin in [D0_PIN, D1_PIN, D2_PIN, D3_PIN, MODESEL_PIN, SIGNAL_PIN]:
-    GPIO.setup(_pin, GPIO.OUT)
-
-# disable the modulator
-GPIO.output(SIGNAL_PIN, False)
-
-# set the modulator to OOK (On-Off Keying) signalling mode
-GPIO.output(MODESEL_PIN, MODESEL_OOK)
-
-# initialise the encoder to all zeroes
-set_code(0b0000)
+        # switch the modulator on then off
+        modulator.set_value(_MODULATOR_ON)
+        time.sleep(_MODULATOR_DURATION)
+        modulator.set_value(_MODULATOR_OFF)
