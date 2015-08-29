@@ -13,7 +13,7 @@ import time
 
 
 
-__version__ = "0.2"
+__version__ = "0.21"
 
 
 
@@ -132,7 +132,7 @@ class _GPIOPin:
 
 
     def __exit__(self, type, value, traceback):
-        # we're finish with the pin so unexport it
+        # we're finished with the pin so unexport it
 
         with open(_GPIO_DIR + "unexport", "w") as f:
             f.write(str(self._num))
@@ -142,7 +142,7 @@ class _GPIOPin:
         # this method is called before doing any operation which requires
         # access to the pin's sysfs files - it attempt to open the 'value'
         # file for writing, retrying until it becomes available, aborting if
-        # this takes too lon
+        # this takes too long
         #
         # the method remembers that the files have become available and will
         # return immediately, if this has already happened
