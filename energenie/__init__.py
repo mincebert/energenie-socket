@@ -13,7 +13,7 @@ import time
 
 
 
-__version__ = "0.21"
+__version__ = "0.211"
 
 
 
@@ -140,7 +140,7 @@ class _GPIOPin:
 
     def _wait_available(self):
         # this method is called before doing any operation which requires
-        # access to the pin's sysfs files - it attempt to open the 'value'
+        # access to the pin's sysfs files - it attempts to open the 'value'
         # file for writing, retrying until it becomes available, aborting if
         # this takes too long
         #
