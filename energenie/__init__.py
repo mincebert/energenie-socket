@@ -13,7 +13,7 @@ import time
 
 
 
-__version__ = "0.211"
+__version__ = "0.212"
 
 
 
@@ -53,8 +53,11 @@ _MODULATOR_ON = "1"
 # codes to send to switch the various sockets off and on, in the form of a
 # binary value '0b<D3><D2><D1><D0>', corresponding to the data pins above
 #
-# note that each of the bits in this value do NOT directly correspond to each
-# of the sockets
+# These are provided as both a series of direct constants and dictionary
+# keyed by socket number and state - e.g. SOCK["2"]["on"] = SOCK2_ON
+#
+# note that each of the bits in these values do NOT directly correspond to
+# each of the sockets
 
 ALL_OFF = 0b0011
 SOCK1_OFF = 0b0111
@@ -67,6 +70,14 @@ SOCK1_ON = 0b1111
 SOCK2_ON = 0b1110
 SOCK3_ON = 0b1101
 SOCK4_ON = 0b1100
+
+SOCK = {
+    "all": { "off": ALL_OFF, "on": ALL_ON },
+    "1":   { "off": SOCK1_OFF, "on": SOCK1_ON },
+    "2":   { "off": SOCK2_OFF, "on": SOCK2_ON },
+    "3":   { "off": SOCK3_OFF, "on": SOCK3_ON },
+    "4":   { "off": SOCK4_OFF, "on": SOCK4_ON }
+}
 
 
 # delay to wait for the encoder to settle, after setting the data bits 
@@ -115,7 +126,7 @@ class _GPIOPin:
         # in sysfs for that pin
 
         self._num = num
-        self._dir = _GPIO_DIR + "gpio%d/" % self._num
+        self._dir = _GPIO_DIR + ("gpio%d/" % self._num)
 
 
         # initialise the 'available' flag to false as we haven't checked
