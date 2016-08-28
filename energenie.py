@@ -15,19 +15,7 @@ import argparse
 
 
 
-__version__ = "0.1 (2016-08-27)"
-
-
-
-# set the input() function to use raw_input() so we can use the former on
-# Python 2.x; Python 3.x will fail because raw_input() does not exist, so we
-# just skip that
-
-try:
-    input = raw_input
-
-except NameError:
-    pass
+__version__ = "0.11 (2016-08-28)"
 
 
 
